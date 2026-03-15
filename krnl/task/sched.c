@@ -1,10 +1,11 @@
 #include "sched.h"
-#include "../hw/lapic.h"
-#include "../hw/idt.h"
-#include "../mem/vmm.h"
-#include "../mem/kheap.h"
-#include "../log.h"
-#include "../cstdlib.h"
+#include "hw/lapic.h"
+#include "hw/idt.h"
+#include "hw/rtc.h"
+#include "mem/vmm.h"
+#include "mem/kheap.h"
+#include "log.h"
+#include "cstdlib.h"
 #include <mm.h>
 
 LOG_MODULE("sched");
@@ -36,15 +37,14 @@ void sched_add_thread(const char* name, void (*entry_point)(void), void* stack_b
     t->parent_id = current_thread ? current_thread->id : 0;
     t->cwd = current_thread ? current_thread->cwd : NULL;
 
+    t->start_time = rtc_get_unix_time();
+
     if (name) {
         strncpy(t->name, name, 31);
         t->name[31] = '\0';
     } else {
         strcpy(t->name, "unnamed");
     }
-    
-    
-
     
     uint64_t* stack = (uint64_t*)((uint64_t)stack_bottom + stack_size);
     
@@ -240,6 +240,8 @@ uint64_t sched_fork_internal(uint64_t rsp_val) {
         kfree(child);
         return -1;
     }
+
+    child->start_time = rtc_get_unix_time();
     
     strcpy(child->name, current_thread->name);
     
@@ -422,4 +424,23 @@ int sched_kill(uint64_t pid, int sig) {
 
 void sched_yield(void) {
     asm volatile("int $0xEF");
+}
+
+void sched_print_threads(void) {
+    if (!thread_queue) {
+        return;
+    }
+    
+    uint64_t elapsed, hours, minutes, seconds;
+    
+    tty_printf("    PID | TTY             | Time     | CMD\n");
+    thread_t* t = thread_queue;
+    do {
+        elapsed = rtc_get_unix_time() - t->start_time;
+        hours = elapsed / 3600;
+        minutes = (elapsed % 3600) / 60;
+        seconds = elapsed % 60;
+        tty_printf(" %6llu | %15s | %02d:%02d:%02d | %s\n", t->id, NULL, hours, minutes, seconds, t->name);
+        t = t->next;
+    } while (t != thread_queue);
 }

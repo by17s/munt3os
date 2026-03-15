@@ -384,6 +384,16 @@ static int execute_cmd(tty_t *tty, int argc, char **argv) {
         return 0;
     }
 
+    if (strcmp(argv[0], "cpus") == 0) {
+        acpi_cpu_dump();
+        return 0;
+    }
+
+    if (strcmp(argv[0], "ps") == 0) {
+        sched_print_threads();
+        return 0;
+    }
+
     //Execute a program in a child process without waiting for it (shadow execution)
     if (strcmp(argv[0], "execz") == 0) {
         if (argc < 2) {

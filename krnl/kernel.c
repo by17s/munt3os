@@ -87,26 +87,6 @@ int kmain(tty_t *tty, int flags, void* initrd_base, size_t initrd_size) {
 
     LOG_INFO("Hello from kmain! Flags: 0x%x", flags);
     start_time = rtc_get_unix_time();
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                 
     cpu_info_t cpu;
     get_cpu_info(&cpu);
@@ -173,20 +153,24 @@ int kmain(tty_t *tty, int flags, void* initrd_base, size_t initrd_size) {
 
     usb_init();
 
-    
     sched_init();
     syscall_init();
     
     uint64_t cr3;
     asm volatile("mov %%cr3, %0" : "=r"(cr3));
     
-    void* stack_a = (void*)kmalloc(4096);
-    
+    void* stack_usbpolling = (void*)kmalloc(4096);
     void* stack_cmdline = (void*)kmalloc(8192); 
     void* stack_vidswap = (void*)kmalloc(4096);
 
-    sched_add_thread("USB Polling", (void*)usb_polling_thread, stack_a, 4096, cr3);
-    
+    sched_add_thread("[USB Polling]", (void*)usb_polling_thread, stack_usbpolling, 4096, cr3);
+
+    if(vid_fb_enable_swap(tty->fb) == 0) {
+        LOG_INFO("Framebuffer swap enabled successfully.");
+        sched_add_thread("[Video]", (void*)thread_vidswap, stack_vidswap, 4096, cr3);
+    } else {
+        LOG_ERROR("Failed to enable framebuffer swap.");
+    }
 
     vfs_mount("/dev/sda", "/mnt", "tarfs", NULL);
     
@@ -195,9 +179,6 @@ int kmain(tty_t *tty, int flags, void* initrd_base, size_t initrd_size) {
     } else {
         tty_printf("No PS/2 keyboard or USB keyboard detected. CMDLINE support will be disabled.\n");
     }
-    
-
-    
     
     lapic_timer_init(0xEF, 10000000, 0x0B);
 

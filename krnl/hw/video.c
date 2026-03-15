@@ -6,6 +6,8 @@
 #include "font6x8.h"
 #include "font/psf.h"
 
+#include "mm.h"
+
 extern const unsigned char font_6x8_slim[FONT_6X8_SLIM_ARRAY_LENGTH];
 
 int vid_fb_init(framebuffer_t* fb, struct limine_framebuffer* limine_fb) {
@@ -21,6 +23,22 @@ int vid_fb_init(framebuffer_t* fb, struct limine_framebuffer* limine_fb) {
 
     return 0;
 }
+
+int vid_fb_enable_swap(framebuffer_t* fb) {
+    if (!fb) return -1;
+    if (fb->swap) return 0; 
+
+    if (!fb || !fb->buffer) return -1;
+    fb->swap = fb->buffer;
+
+    size_t buffer_size = fb->height * fb->width * (fb->bpp / 8);
+
+    fb->buffer = kmalloc(buffer_size);
+    if (!fb->buffer) return -1;
+    vid_fb_clear(fb, 0x00000000);
+    return 0;
+}
+    
 
 int vid_fb_swap(framebuffer_t* fb) {
     if (!fb || !fb->buffer || !fb->swap) return -1;

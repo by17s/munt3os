@@ -17,6 +17,7 @@ typedef struct thread {
     char name[32];
     uint64_t rsp;
     uint64_t cr3;
+    uint64_t start_time;
     
     void* stack_bottom;
     size_t stack_size;
@@ -31,7 +32,6 @@ typedef struct thread {
     
     struct vfs_node* cwd;
 
-    
     file_descriptor_t fds[MAX_FDS];
 
     struct thread* next;
@@ -48,3 +48,4 @@ thread_t* sched_get_current_thread(void);
 void isr_lapic_timer(void); 
 
 void sched_yield(void);
+void sched_print_threads(void);
