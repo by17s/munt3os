@@ -125,7 +125,7 @@ static uint32_t procfs_file_read_mem(vfs_node_t* node, uint32_t offset, uint32_t
     pmm_stat(&stat);
     snprintf((char*)fdata->data, 
         fdata->size, "%llu MB / %llu MB", 
-        stat.free_pages * PAGE_SIZE / (1024 * 1024), 
+        (stat.usable_pages - stat.used_pages) * PAGE_SIZE / (1024 * 1024), 
         stat.usable_pages * PAGE_SIZE / (1024 * 1024)
     );
     return procfs_file_read(node, offset, size, buffer);

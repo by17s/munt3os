@@ -196,8 +196,6 @@ void* kmem_cache_alloc(kmem_cache_t* cache) {
 
 void kmem_cache_free(kmem_cache_t* cache, void* obj) {
     if (!cache || !obj) return;
-
-    
     
     size_t slab_size = cache->pages_per_slab * PAGE_SIZE;
     slab_t* slab = (slab_t*)((uintptr_t)obj & ~(slab_size - 1));
@@ -216,8 +214,5 @@ void kmem_cache_free(kmem_cache_t* cache, void* obj) {
         
         list_remove(&cache->slabs_partial, slab);
         list_add(&cache->slabs_free, slab);
-        
-        
-        
     }
 }

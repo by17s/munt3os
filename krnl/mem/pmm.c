@@ -96,7 +96,7 @@ void pmm_init(void) {
         stats.free_pages--;
     }
 
-    stats.used_pages = stats.total_pages - stats.free_pages;
+    stats.used_pages = 0;
     stats.initialized = true;
     LOG_INFO("PMM initialized: total=%llu pages, free=%llu pages, used=%llu pages", 
         stats.total_pages, stats.free_pages, stats.used_pages);

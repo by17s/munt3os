@@ -76,6 +76,11 @@ static int execute_cmd(tty_t *tty, int argc, char **argv) {
         tty->puts(tty, "  --- Execution ---\n");
         tty->puts(tty, "  ./<path>       - Execute a program from the filesystem\n");
         tty->puts(tty, "  execz <path>   - Execute a program from the filesystem (shadow)\n");
+        tty->puts(tty, "  ps             - Show running processes\n");
+        tty->puts(tty, "  --- System Control (TODO) ---\n");
+        tty->puts(tty, "  shutdown        - Shut down the system\n");
+        tty->puts(tty, "  reboot          - Reboot the system\n");
+        tty->puts(tty, "  systemctl       - Control the init system and service manager\n");
         
         return 0;
     }
