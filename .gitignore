@@ -1,0 +1,14 @@
+*.bak
+*.elf
+*.o
+*.bin
+*.map
+*.log
+*.d
+*.dSYM
+*.tmp
+*.cache
+*.obj
+*.iso
+
+*.mos_cfg
