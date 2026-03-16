@@ -4,6 +4,8 @@
 
 #include "../api/syscall.h"
 
+#include "cred.h"
+
 typedef enum thread_state {
     THREAD_RUNNING = 0,
     THREAD_WAITING,
@@ -31,8 +33,8 @@ typedef struct thread {
     int exit_code;
     
     struct vfs_node* cwd;
-
     file_descriptor_t fds[MAX_FDS];
+    cred_t cred;
 
     struct thread* next;
 } thread_t;
@@ -49,3 +51,23 @@ void isr_lapic_timer(void);
 
 void sched_yield(void);
 void sched_print_threads(void);
+
+static inline void setuid(uid_t uid) {
+    thread_t* t = sched_get_current_thread();
+    if (t) t->cred.uid = uid;
+}
+
+static inline void setgid(gid_t gid) {
+    thread_t* t = sched_get_current_thread();
+    if (t) t->cred.gid = gid;
+}
+
+static inline void seteuid(uid_t euid) {
+    thread_t* t = sched_get_current_thread();
+    if (t) t->cred.euid = euid;
+}
+
+static inline void setegid(gid_t egid) {
+    thread_t* t = sched_get_current_thread();
+    if (t) t->cred.egid = egid;
+}

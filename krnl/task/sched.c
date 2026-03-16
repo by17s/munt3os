@@ -75,6 +75,12 @@ void sched_add_thread(const char* name, void (*entry_point)(void), void* stack_b
     
     t->rsp = (uint64_t)stack;
     
+    t->cred = (cred_t){
+        .uid = 0,
+        .gid = 0,
+        .euid = 0,
+        .egid = 0
+    };
     
     if (!thread_queue) {
         t->next = t; 
@@ -109,8 +115,6 @@ uint64_t sched_tick(uint64_t rsp) {
     while(next_t->state != THREAD_RUNNING) {
         next_t = next_t->next;
         if (next_t == start_t) {
-            
-            
             break;
         }
     }

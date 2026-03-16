@@ -1,0 +1,8 @@
+OHCI_enable: int= 1
+EHCI_enable: int= 1
+XHCI_enable: int= 1
+
+SATA_enable: int= 1
+NVMe_enable: int= 1
+
+PS2_enable:  int= 1

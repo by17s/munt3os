@@ -18,6 +18,11 @@
 #define SYS_LSEEK    13
 #define SYS_MMAP     14
 #define SYS_MUNMAP   15
+#define SYS_GETPID   16
+#define SYS_GETUID   17
+#define SYS_GETGID   18
+#define SYS_SETUID   19
+#define SYS_SETGID   20
 
 #define SYS_SOCKET   41
 #define SYS_CONNECT  42

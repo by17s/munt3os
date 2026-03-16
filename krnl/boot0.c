@@ -82,8 +82,6 @@ void _start(void) {
         ps2_init();
     }
 
-    
-    
     STI();
     
     

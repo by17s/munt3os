@@ -289,7 +289,30 @@ static int sys_munmap(void* addr, size_t length) {
     return 0;
 }
 
+static pid_t sys_getpid(void) {
+    thread_t* thread = sched_get_current_thread();
+    return thread ? thread->id : -1;
+}
 
+static uid_t sys_getuid(void) {
+    thread_t* thread = sched_get_current_thread();
+    return thread ? thread->cred.euid : -1;
+}
+
+static gid_t sys_getgid(void) {
+    thread_t* thread = sched_get_current_thread();
+    return thread ? thread->cred.egid : -1;
+}
+
+static void sys_setuid(uid_t uid) {
+    thread_t* thread = sched_get_current_thread();
+    if (thread) thread->cred.euid = uid;
+}
+
+static void sys_setgid(gid_t gid) {
+    thread_t* thread = sched_get_current_thread();
+    if (thread) thread->cred.egid = gid;
+}
 
 
 uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
@@ -328,6 +351,19 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
             return sched_kill((uint64_t)arg1, (int)arg2);
         case SYS_LSEEK:
             return sys_lseek((int)arg1, (int)arg2, (int)arg3);
+        case SYS_GETPID:
+            return sys_getpid();
+        case SYS_GETUID:
+            return sys_getuid();
+        case SYS_GETGID:
+            return sys_getgid();
+        case SYS_SETUID:
+            sys_setuid((uid_t)arg1);
+            return 0;
+        case SYS_SETGID:
+            sys_setgid((gid_t)arg1);
+            return 0;
+
         case SYS_SOCKET:
             return sys_socket((int)arg1, (int)arg2, (int)arg3);
         case SYS_BIND:

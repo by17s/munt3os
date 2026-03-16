@@ -10,5 +10,6 @@
 *.cache
 *.obj
 *.iso
+*.tar
 
 *.mos_cfg

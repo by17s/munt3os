@@ -5,11 +5,22 @@
 #include "font/psf.h"
 #include "mm.h"
 
+#include "util/moscfg.h"
+
 #include "log.h"
 LOG_MODULE("tty");
 
 static tty_t tty_array[4];
 static tty_t* active_tty = NULL;
+static cfg_t* tty_cfg = NULL;
+static pallet_t default_ansi_pallet = {
+    .colors = {
+        0x000000, 0x555555, 0xAA0000, 0xFF5555,
+        0x00AA00, 0x55FF55, 0xAAAA00, 0xFFFF55,
+        0x0000AA, 0x5555FF, 0xAA00AA, 0xFF55FF,
+        0x00AAAA, 0x55FFFF, 0xAAAAAA, 0xFFFFFF
+    }
+};
 
 int tty_get(int64_t index, tty_t** out) {
     if(index == -1) {
@@ -329,31 +340,7 @@ int tty_init(tty_t* tty, framebuffer_t *fb) {
         return -1;
     }
 
-    tty->ansi_pallet = (pallet_t){
-        0x171717, 
-        0x2B2B2B, 
-
-        0xD25252, 
-        0xF00C0C, 
-
-        0xA5C261, 
-        0xC2E075, 
-
-        0xFFC66D, 
-        0xE1E48B, 
-
-        0x6C99BB, 
-        0x8AB7D9, 
-
-        0xD191D9, 
-        0xEFB5F7, 
-
-        0xBED6FF, 
-        0xDCF4FF, 
-
-        0xEEEEEC, 
-        0xFFFFFF  
-    };
+    tty->ansi_pallet = default_ansi_pallet;
 
     tty->fg_color   = tty->ansi_pallet.colors[tty->colors.fg_color_index];
     tty->bg_color   = tty->ansi_pallet.colors[tty->colors.bg_color_index];
@@ -367,5 +354,99 @@ int tty_init(tty_t* tty, framebuffer_t *fb) {
 
     tty->clear(tty);
 
+    return 0;
+}
+
+int tty_load_pallet(tty_t* tty, const pallet_t* pallet) {
+    if (!tty)
+        return -1;
+
+    if(!pallet) {
+        tty->ansi_pallet = default_ansi_pallet;
+    } else {
+        tty->ansi_pallet = *pallet;
+    }
+    tty->fg_color = tty->ansi_pallet.colors[tty->colors.fg_color_index];
+    tty->bg_color = tty->ansi_pallet.colors[tty->colors.bg_color_index];
+    return 0;
+}
+
+static psf_font_t* tty_load_font(const char* path) {
+    vfs_node_t* font_node = kopen(path);
+    if (font_node) {
+        uint8_t* font_buf = kmalloc(font_node->size);
+        if (font_buf) {
+            vfs_read(font_node, 0, font_node->size, font_buf);
+            psf_font_t* font = kmalloc(sizeof(psf_font_t));
+            if (psf_init_font(font, font_buf) == 0) {
+                kclose(font_node);
+                return font;
+            } else {
+                LOG_ERROR("Failed to parse PSF font (in %s)!", path);
+                kfree(font);
+                kfree(font_buf);
+            }
+        }
+        kclose(font_node);
+    } else {
+        return NULL;
+    }
+    return NULL;
+}
+
+int tty_load_cfg(tty_t* tty, const char* path) {
+    cfg_t* cfg = cfg_parse_file(path);
+    if (!cfg) {
+        LOG_ERROR("Failed to load TTY config from %s", path);
+        return -1;
+    }
+
+    const char* font_path = cfg_get_str(cfg, "FONT", NULL);
+    if (font_path) {
+        psf_font_t* font = tty_load_font(font_path);
+        LOG_INFO("Loaded font from %s", font_path);
+        if (font) {
+            if(tty != NULL) {
+                LOG_INFO("Font loaded: %dx%d glyphs", font->width, font->height);
+                tty->font = font;
+            }
+        } else {
+            LOG_ERROR("Failed to load font from %s", font_path);
+        }
+    }
+
+    const char* pal_path = cfg_get_str(cfg, "PAL", NULL);
+    if (pal_path) {
+        cfg_t* pal_cfg = cfg_parse_file(pal_path);
+        if (pal_cfg) {
+            pallet_t *pallet = tty == NULL ? &default_ansi_pallet : &tty->ansi_pallet;
+            pallet->colors[ANSI_NUM_BLACK] = cfg_get_int(pal_cfg, "BLACK", default_ansi_pallet.colors[ANSI_NUM_BLACK]);
+            pallet->colors[ANSI_NUM_BLACK_BOLD] = cfg_get_int(pal_cfg, "BLACK_BOLD", default_ansi_pallet.colors[ANSI_NUM_BLACK_BOLD]);
+            pallet->colors[ANSI_NUM_RED] = cfg_get_int(pal_cfg, "RED", default_ansi_pallet.colors[ANSI_NUM_RED]);
+            pallet->colors[ANSI_NUM_RED_BOLD] = cfg_get_int(pal_cfg, "RED_BOLD", default_ansi_pallet.colors[ANSI_NUM_RED_BOLD]);
+            pallet->colors[ANSI_NUM_GREEN] = cfg_get_int(pal_cfg, "GREEN", default_ansi_pallet.colors[ANSI_NUM_GREEN]);
+            pallet->colors[ANSI_NUM_GREEN_BOLD] = cfg_get_int(pal_cfg, "GREEN_BOLD", default_ansi_pallet.colors[ANSI_NUM_GREEN_BOLD]);
+            pallet->colors[ANSI_NUM_YELLOW] = cfg_get_int(pal_cfg, "YELLOW", default_ansi_pallet.colors[ANSI_NUM_YELLOW]);
+            pallet->colors[ANSI_NUM_YELLOW_BOLD] = cfg_get_int(pal_cfg, "YELLOW_BOLD", default_ansi_pallet.colors[ANSI_NUM_YELLOW_BOLD]);
+            pallet->colors[ANSI_NUM_BLUE] = cfg_get_int(pal_cfg, "BLUE", default_ansi_pallet.colors[ANSI_NUM_BLUE]);
+            pallet->colors[ANSI_NUM_BLUE_BOLD] = cfg_get_int(pal_cfg, "BLUE_BOLD", default_ansi_pallet.colors[ANSI_NUM_BLUE_BOLD]);
+            pallet->colors[ANSI_NUM_MAGENTA] = cfg_get_int(pal_cfg, "MAGENTA", default_ansi_pallet.colors[ANSI_NUM_MAGENTA]);
+            pallet->colors[ANSI_NUM_MAGENTA_BOLD] = cfg_get_int(pal_cfg, "MAGENTA_BOLD", default_ansi_pallet.colors[ANSI_NUM_MAGENTA_BOLD]);
+            pallet->colors[ANSI_NUM_CYAN] = cfg_get_int(pal_cfg, "CYAN", default_ansi_pallet.colors[ANSI_NUM_CYAN]);
+            pallet->colors[ANSI_NUM_CYAN_BOLD] = cfg_get_int(pal_cfg, "CYAN_BOLD", default_ansi_pallet.colors[ANSI_NUM_CYAN_BOLD]);
+            pallet->colors[ANSI_NUM_WHITE] = cfg_get_int(pal_cfg, "WHITE", default_ansi_pallet.colors[ANSI_NUM_WHITE]);
+            pallet->colors[ANSI_NUM_WHITE_BOLD] = cfg_get_int(pal_cfg, "WHITE_BOLD", default_ansi_pallet.colors[ANSI_NUM_WHITE_BOLD]);
+            if(tty != NULL) {  
+                tty->fg_color = tty->ansi_pallet.colors[tty->colors.fg_color_index];
+                tty->bg_color = tty->ansi_pallet.colors[tty->colors.bg_color_index];
+            }
+            cfg_destroy(pal_cfg);
+        } else {
+            LOG_ERROR("Failed to load palette from %s", pal_path);
+        }
+    } 
+
+    LOG_INFO("TTY config loaded from %s", path);
+    tty_cfg = cfg;
     return 0;
 }

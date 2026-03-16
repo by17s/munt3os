@@ -1,0 +1,4 @@
+FONT:  str=/usr/share/fonts/alt-8x16.psf
+PAL:   str=/usr/share/palettes/base.moscfg
+
+SHELL:  str=/bin/uxsh

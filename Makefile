@@ -104,3 +104,6 @@ OBJS = \
     build/krnl/hw/usb/usb.o \
     build/krnl/mem/kbuddy.o \
     build/krnl/mem/kheap.o \
+	build/krnl/util/list.o \
+	build/krnl/util/hashmap.o \
+	

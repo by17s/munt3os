@@ -111,27 +111,9 @@ int kmain(tty_t *tty, int flags, void* initrd_base, size_t initrd_size) {
 
         vfs_mount("/dev/ram0", "/", "tarfs", &tar_data);
         LOG_INFO("VFS mounted initramfs at /");
-        
-        vfs_node_t* font_node = kopen("/usr/share/alt-8x16.psf");
-        if (font_node) {
-            uint8_t* font_buf = kmalloc(font_node->size);
-            if (font_buf) {
-                vfs_read(font_node, 0, font_node->size, font_buf);
-                psf_font_t* font = kmalloc(sizeof(psf_font_t));
-                if (psf_init_font(font, font_buf) == 0) {
-                    tty->font = font;
-                    LOG_INFO("Loaded PSF font from initramfs!");
-                } else {
-                    LOG_ERROR("Failed to parse PSF font!");
-                    kfree(font);
-                    kfree(font_buf);
-                }
-            }
-            kclose(font_node);
-        } else {
-            LOG_ERROR("Could not open font file /usr/share/alt-8x16.psF");
-        }
 
+        tty_load_cfg(tty, "/etc/tty/tty.moscfg");
+        tty->clear(tty);
     } else {
         LOG_WARN("No initramfs was provided to the kernel!");
     }

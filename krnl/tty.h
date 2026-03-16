@@ -64,3 +64,5 @@ int tty_get(int64_t index, tty_t** out);
 int tty_set_active(int64_t index);
 int tty_printf(const char* __fmt, ...);
 int tty_init(tty_t* tty, framebuffer_t *fb);
+
+int tty_load_cfg(tty_t *tty, const char* path);
