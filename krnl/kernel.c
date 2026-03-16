@@ -41,7 +41,6 @@ LOG_MODULE("kernel");
 
 #define PMM_BLOCK_SIZE 4096
 
-
 static inline uint64_t syscall(uint64_t sys_num, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
     uint64_t ret;
     asm volatile(
@@ -179,7 +178,7 @@ int kmain(tty_t *tty, int flags, void* initrd_base, size_t initrd_size) {
     } else {
         tty_printf("No PS/2 keyboard or USB keyboard detected. CMDLINE support will be disabled.\n");
     }
-    
+
     lapic_timer_init(0xEF, 10000000, 0x0B);
 
     while (1) {

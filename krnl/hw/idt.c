@@ -3,6 +3,9 @@
 #include <memio.h>
 #include "cstdlib.h"
 #include "log.h"
+
+#include "kpanic.h"
+
 LOG_MODULE("idt");
 
 
@@ -43,8 +46,9 @@ void idt_set_descriptor(uint8_t vector, void* isr, uint8_t flags) {
 
 __attribute__((interrupt)) 
 static void isr_divide_by_zero(struct interrupt_frame* frame) {
-    
-    
+    LOG_ERROR("[PANIC] Divide by Zero! RIP: 0x%p, CS: 0x%llx, RFLAGS: 0x%llx, RSP: 0x%p, SS: 0x%llx\n", 
+            frame->ip, frame->cs, frame->flags, frame->sp, frame->ss);
+    kpanic(frame, "#DE: Divide by Zero");
     HANG();
 }
 
@@ -52,6 +56,7 @@ __attribute__((interrupt))
 static void isr_gpf(struct interrupt_frame* frame, uint64_t error_code) {
     LOG_ERROR("[PANIC] General Protection Fault (GPF)! Error Code: 0x%llx, RIP: 0x%p, CS: 0x%llx, RFLAGS: 0x%llx, RSP: 0x%p, SS: 0x%llx\n", 
             error_code, frame->ip, frame->cs, frame->flags, frame->sp, frame->ss);
+    kpanic(frame, "#GPF: General Protection Fault");
     HANG();
 }
 
@@ -61,16 +66,15 @@ static void isr_page_fault(struct interrupt_frame* frame, uint64_t error_code) {
     asm volatile("mov %%cr2, %0" : "=r" (faulting_address));
     
     LOG_ERROR("[PANIC] Page Fault! Address: 0x%p, RIP: 0x%p, Error Code: 0x%llx\n", faulting_address, frame->ip, error_code);
+    kpanic(frame, "#PF: Page Fault at address 0x%llx (cr2)", faulting_address);
     HANG();
 }
 
 
 __attribute__((interrupt)) 
 static void isr_breakpoint(struct interrupt_frame* frame) {
-    
-    LOG("[INFO]", " УРА! Прерывание INT 3 успешно перехвачено!\n");
-    
-    
+    LOG_INFO("Breakpoint at 0x%llx", frame->ip);
+    kpanic(frame, "Kernel panic triggered by breakpoint at RIP: 0x%llx", frame->ip);
     asm volatile("cli; hlt"); 
 }
 

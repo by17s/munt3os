@@ -81,6 +81,7 @@ OBJS = \
     build/krnl/cstdlib.o \
     build/krnl/font6x8.o \
     build/krnl/kernel.o \
+	build/krnl/kpanic.o \
     build/krnl/log.o \
     build/krnl/memio.o \
     build/krnl/mm.o \
