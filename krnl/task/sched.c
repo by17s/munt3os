@@ -4,6 +4,7 @@
 #include "hw/rtc.h"
 #include "mem/vmm.h"
 #include "mem/kheap.h"
+#include "fs/vfs.h"
 #include "log.h"
 #include "cstdlib.h"
 #include <mm.h>
@@ -24,7 +25,24 @@ void sched_init(void) {
     LOG_INFO("Scheduler initialized, ISR wired to 0xEF");
 }
 
-void sched_add_thread(const char* name, void (*entry_point)(void), void* stack_bottom, size_t stack_size, uint64_t cr3) {
+int64_t sched_kthread(const char* name, void (*entry_point)(void), int64_t cap, uid_t uid, gid_t gid) {
+    size_t stack_size = 4096 * 4;
+    void* stack = kmalloc(stack_size);
+    uint64_t cr3;
+    asm volatile("mov %%cr3, %0" : "=r"(cr3));
+    thread_t* t = sched_add_thread(name, entry_point, stack, stack_size, cr3);
+    if (t) {
+        t->cap = cap;
+        t->cred.uid = uid;
+        t->cred.gid = gid;
+        t->cred.euid = uid;
+        t->cred.egid = gid;
+        return t->id;
+    }
+    return -1;
+}
+
+thread_t* sched_add_thread(const char* name, void (*entry_point)(void), void* stack_bottom, size_t stack_size, uint64_t cr3) {
     thread_t* t = (thread_t*)kmalloc(4096); 
     memset(t, 0, 4096);
     
@@ -40,8 +58,8 @@ void sched_add_thread(const char* name, void (*entry_point)(void), void* stack_b
     t->start_time = rtc_get_unix_time();
 
     if (name) {
-        strncpy(t->name, name, 31);
-        t->name[31] = '\0';
+        strncpy(t->name, name, 255);
+        t->name[255] = '\0';
     } else {
         strcpy(t->name, "unnamed");
     }
@@ -81,6 +99,8 @@ void sched_add_thread(const char* name, void (*entry_point)(void), void* stack_b
         .euid = 0,
         .egid = 0
     };
+
+    t->cap = 0;
     
     if (!thread_queue) {
         t->next = t; 
@@ -92,6 +112,7 @@ void sched_add_thread(const char* name, void (*entry_point)(void), void* stack_b
         t->next = thread_queue;
     }
     LOG_INFO("Thread added '%s' TID: %llu", t->name, t->id);
+    return t;
 }
 
 uint64_t sched_tick(uint64_t rsp) {
@@ -444,7 +465,7 @@ void sched_print_threads(void) {
         hours = elapsed / 3600;
         minutes = (elapsed % 3600) / 60;
         seconds = elapsed % 60;
-        tty_printf(" %6llu | %15s | %02d:%02d:%02d | %s\n", t->id, NULL, hours, minutes, seconds, t->name);
+        tty_printf(" %6llu | %15s | %02d:%02d:%02d | %s\n", t->id, t->fds[0].node ? t->fds[0].node->name : "N/A", hours, minutes, seconds, t->name);
         t = t->next;
     } while (t != thread_queue);
 }

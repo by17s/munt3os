@@ -23,6 +23,15 @@
 #define SYS_GETGID   18
 #define SYS_SETUID   19
 #define SYS_SETGID   20
+#define SYS_CREATE   21
+#define SYS_REMOVE   22
+#define SYS_RENAME   23
+#define SYS_MKDIR    24
+#define SYS_RMDIR    25
+#define SYS_CHMOD    26
+#define SYS_CHOWN    27
+#define SYS_STAT     28
+#define SYS_FSTAT    29
 
 #define SYS_SOCKET   41
 #define SYS_CONNECT  42
@@ -31,5 +40,7 @@
 #define SYS_RECVFROM 45
 #define SYS_BIND     46
 #define SYS_LISTEN   47
+
+#define SYS_SYSCTL   120
 
 #endif 

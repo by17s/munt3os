@@ -8,24 +8,27 @@
 #include "../log.h"
 #include "../dev/dev.h"
 
-__attribute__((naked)) static void sched_execve_noreturn(uint64_t entry, uint64_t stack_top) {
+#include "cstdlib.h"
+
+__attribute__((naked)) static void sched_execve_noreturn(uint64_t entry, uint64_t stack_top, uint64_t argc, uint64_t argv_ptr) {
     asm volatile(
         "mov %rsi, %rsp\n"
-        "push $0x30\n" 
-        "push %rsi\n"  
-        "push $0x202\n" 
-        "push $0x28\n"  
-        "push %rdi\n"   
+        "push $0x30\n"   /* SS */
+        "push %rsi\n"    /* RSP */
+        "push $0x202\n"  /* RFLAGS */
+        "push $0x28\n"   /* CS */
+        "push %rdi\n"    /* RIP = entry */
+        "mov %rdx, %rdi\n"  /* argc → rdi (arg1 for main) */
+        "mov %rcx, %rsi\n"  /* argv → rsi (arg2 for main) */
         "iretq\n"
     );
 }
 
-int sys_execve(const char* path) {
-    vfs_node_t* node = kopen(path);
+int sys_execve(const char* path, const char** argv) {
+    vfs_node_t* node = uopen(path, O_RDONLY);
     if (!node) {
         return -1; 
     }
-
     
     vmm_context_t* new_ctx = vmm_create_context();
     if (!new_ctx) {
@@ -67,7 +70,8 @@ int sys_execve(const char* path) {
     thread->heap_end = thread->heap_start;
     thread->mmap_next = 0x8000000000; 
     
-    
+    strncpy(thread->name, path, 255);
+    thread->name[255] = '\0';
     
     if (!thread->fds[0].node) thread->fds[0].node = kopen("/dev/tty");
     if (!thread->fds[1].node) thread->fds[1].node = kopen("/dev/tty");
@@ -81,7 +85,43 @@ int sys_execve(const char* path) {
     kfree(new_ctx); 
 
     
-    sched_execve_noreturn(entry, stack_top);
+    int argc = 0;
+    if (argv) {
+        while (argv[argc]) argc++;
+    }
+
+    
+    uint64_t sp = stack_top;
+
+    
+    uint64_t str_addrs[256];
+    for (int i = argc - 1; i >= 0; i--) {
+        size_t len = strlen(argv[i]) + 1;
+        sp -= len;
+        memcpy((void*)sp, argv[i], len);
+        str_addrs[i] = sp;
+    }
+
+    
+    sp &= ~0xFULL;
+
+    
+    sp -= sizeof(uint64_t);
+    *(uint64_t*)sp = 0;
+
+    
+    for (int i = argc - 1; i >= 0; i--) {
+        sp -= sizeof(uint64_t);
+        *(uint64_t*)sp = str_addrs[i];
+    }
+
+    uint64_t argv_user = sp;
+
+    
+    sp &= ~0xFULL;
+
+    
+    sched_execve_noreturn(entry, sp, (uint64_t)argc, argv_user);
 
     return 0; 
 }

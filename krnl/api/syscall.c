@@ -42,7 +42,7 @@ static int sys_open(const char* path, int flags) {
     }
 
     
-    vfs_node_t* node = kopen(path);
+    vfs_node_t* node = uopen(path, flags);
     if (!node) {
         return -1; 
     }
@@ -83,12 +83,24 @@ static int sys_write(int fd, const void* buffer, size_t size) {
     return bytes_written;
 }
 
-int sys_stat(const char *restrict path, struct stat *restrict statbuf) {
-
+static int sys_stat(const char *restrict path, struct stat *restrict statbuf) {
+    if (!path || !statbuf) return -1;
+    vfs_node_t* node = uopen(path, O_RDONLY);
+    if (!node) return -1;
+    kstat(node, statbuf);
+    kclose(node);
+    return 0;
 }
 
-int sys_fstat(int fd, struct stat *statbuf) {
+static int sys_fstat(int fd, struct stat *statbuf) {
+    if (fd < 0 || fd >= MAX_FDS || !statbuf) return -1;
 
+    thread_t* thread = sched_get_current_thread();
+    if (!thread || !thread->fds[fd].node) return -1;
+
+    file_descriptor_t* fdesc = &thread->fds[fd];
+    kstat(fdesc->node, statbuf);
+    return 0;
 }
 
 #define SEEK_SET 0
@@ -156,7 +168,7 @@ static int sys_readdir(int fd, struct dirent* dirent, uint32_t index) {
 
 static int sys_chdir(const char* path) {
     if (!path) return -1;
-    vfs_node_t* node = kopen(path);
+    vfs_node_t* node = uopen(path, O_RDONLY);
     if (!node) return -1;
 
     if (node->type != VFS_DIRECTORY && node->type != VFS_MOUNTPOINT) {
@@ -314,6 +326,49 @@ static void sys_setgid(gid_t gid) {
     if (thread) thread->cred.egid = gid;
 }
 
+static int sys_create(char* path, int flags) {
+    if (!path) return -1;
+    int res = kcreate(sched_get_current_thread()->cwd, path, flags);
+    return res;
+}
+
+static int sys_remove(char* path) {
+    if (!path) return -1;
+    return kremove(sched_get_current_thread()->cwd, path);
+}
+
+static int sys_rename(char* oldname, char* newname) {
+    if (!oldname || !newname) return -1;
+    return vfs_rename(sched_get_current_thread()->cwd, oldname, newname);
+}
+
+static int sys_mkdir(char* path, int flags) {
+    if (!path) return -1;
+    return kmkdir(sched_get_current_thread()->cwd, path, flags);
+}
+
+static int sys_rmdir(char* path) {
+    if (!path) return -1;
+    return krmdir(sched_get_current_thread()->cwd, path);
+}
+
+static int sys_chmod(char* path, int mode) {
+    if (!path) return -1;
+    vfs_node_t* node = uopen(path, O_RDONLY);
+    if (!node) return -1;
+    int res = 0;//kchmod(node, mode);
+    kclose(node);
+    return res;
+}
+
+static int sys_chown(const char* path, uid_t owner, gid_t group) {
+    if (!path) return -1;
+    vfs_node_t* node = uopen(path, O_RDONLY);
+    if (!node) return -1;
+    int res = 0;//kchown(node, owner, group);
+    kclose(node);
+    return res;
+}
 
 uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
     
@@ -329,7 +384,7 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
         case SYS_FORK:
             return sched_fork();
         case SYS_EXECVE:
-            return sys_execve((const char*)arg1);
+            return sys_execve((const char*)arg1, (const char**)arg2);
         case SYS_EXIT:
             sched_exit((int)arg1);
             return 0; 
@@ -363,6 +418,24 @@ uint64_t syscall_handler(uint64_t num, uint64_t arg1, uint64_t arg2, uint64_t ar
         case SYS_SETGID:
             sys_setgid((gid_t)arg1);
             return 0;
+        case SYS_CREATE:
+            return sys_create((char*)arg1, (int)arg2);
+        case SYS_REMOVE:
+            return sys_remove((char*)arg1);
+        case SYS_RENAME:
+            return sys_rename((char*)arg1, (char*)arg2);
+        case SYS_MKDIR:
+            return sys_mkdir((char*)arg1, (int)arg2);
+        case SYS_RMDIR:
+            return sys_rmdir((char*)arg1);
+        case SYS_CHMOD:
+            return sys_chmod((char*)arg1, (int)arg2);
+        case SYS_CHOWN:
+            return sys_chown((char*)arg1, (uid_t)arg2, (gid_t)arg3);
+        case SYS_STAT:
+            return sys_stat((const char*)arg1, (struct stat*)arg2);
+        case SYS_FSTAT:
+            return sys_fstat((int)arg1, (struct stat*)arg2);
 
         case SYS_SOCKET:
             return sys_socket((int)arg1, (int)arg2, (int)arg3);

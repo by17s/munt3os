@@ -52,7 +52,10 @@ iso: kernel initramfs
 run: iso
 	qemu-system-x86_64 -cdrom muntos.iso -d int -no-reboot -D qemu.log \
 		-accel kvm -cpu host -smp sockets=1,cores=8,threads=1 \
-		-M q35 -m 256M -serial stdio -device pci-ohci
+		-M q35 -m 256M -serial stdio -device pci-ohci \
+		-drive if=none,id=sda,file=ext2.img,format=raw \
+		-device ahci,id=ahci \
+		-device ide-hd,drive=sda,bus=ahci.0 \
 
 run-host: iso
 	qemu-system-x86_64 -cdrom muntos.iso -d int -no-reboot -D qemu.log \
@@ -70,6 +73,17 @@ prepare-sdk:
 	@echo "Preparing SDK..."
 	@cp krnl/api/sysnums.h munt3os-sdk/sys/
 	@cp krnl/api/sysdef.h munt3os-sdk/sys/
+
+prepare-ext2:
+	@echo "Preparing ext2 filesystem image..."
+	@dd if=/dev/zero of=ext2.img bs=1M count=64
+	@mkfs.ext2 -q ext2.img 65536
+	@mkdir -p mnt
+	@sudo mount -o loop ext2.img mnt
+	@sudo mkdir -p mnt/boot
+	@sudo cp ext2drive/* mnt/files/
+	@sudo umount mnt
+	@rmdir mnt
 
 clean:
 	rm -rf build/*

@@ -247,6 +247,73 @@ static bool ahci_read_sectors(volatile hba_port_t *port, uint64_t start_lba, uin
     return true;
 }
 
+static bool ahci_write_sectors(volatile hba_port_t *port, uint64_t start_lba, uint32_t count, void *phys_buf) {
+    port->is = (uint32_t)-1;
+    int slot = ahci_find_cmdslot(port);
+    if (slot == -1) return false;
+
+    uint64_t clb_addr = port->clb | ((uint64_t)port->clbu << 32);
+    hba_cmd_header_t *cmdheader = (hba_cmd_header_t*)phys_to_virt(clb_addr);
+    cmdheader += slot;
+    cmdheader->cfl = sizeof(fis_reg_h2d_t)/sizeof(uint32_t);
+    cmdheader->w = 1;
+
+    uint32_t prdt_count = ((count * 512) - 1) / 0x400000 + 1;
+    cmdheader->prdtl = prdt_count;
+
+    uint64_t ctba_addr = cmdheader->ctba | ((uint64_t)cmdheader->ctbau << 32);
+    hba_cmd_tbl_t *cmdtbl = (hba_cmd_tbl_t*)phys_to_virt(ctba_addr);
+    memset(cmdtbl, 0, sizeof(hba_cmd_tbl_t) + (cmdheader->prdtl - 1)*sizeof(hba_prdt_entry_t));
+
+    uint64_t phys_addr = (uint64_t)phys_buf;
+    uint32_t remain_bytes = count * 512;
+    for (uint32_t i = 0; i < prdt_count; i++) {
+        cmdtbl->prdt_entry[i].dba = (uint32_t)phys_addr;
+        cmdtbl->prdt_entry[i].dbau = (uint32_t)(phys_addr >> 32);
+        uint32_t chunk = remain_bytes > 0x400000 ? 0x400000 : remain_bytes;
+        cmdtbl->prdt_entry[i].dbc = chunk - 1;
+        cmdtbl->prdt_entry[i].i = (i == prdt_count - 1) ? 1 : 0;
+        phys_addr += chunk;
+        remain_bytes -= chunk;
+    }
+
+    fis_reg_h2d_t *cmdfis = (fis_reg_h2d_t*)(&cmdtbl->cfis);
+    cmdfis->fis_type = FIS_TYPE_REG_H2D;
+    cmdfis->c = 1;
+    cmdfis->command = ATA_CMD_WRITE_DMA_EXT;
+
+    cmdfis->lba0 = (uint8_t)(start_lba & 0xFF);
+    cmdfis->lba1 = (uint8_t)((start_lba >> 8) & 0xFF);
+    cmdfis->lba2 = (uint8_t)((start_lba >> 16) & 0xFF);
+    cmdfis->device = 1 << 6;
+
+    cmdfis->lba3 = (uint8_t)((start_lba >> 24) & 0xFF);
+    cmdfis->lba4 = (uint8_t)((start_lba >> 32) & 0xFF);
+    cmdfis->lba5 = (uint8_t)((start_lba >> 40) & 0xFF);
+
+    cmdfis->countl = count & 0xFF;
+    cmdfis->counth = (count >> 8) & 0xFF;
+
+    int spin = 0;
+    while ((port->tfd & (0x80 | 0x08)) && spin < 1000000) { spin++; }
+
+    port->ci = 1 << slot;
+
+    while (1) {
+        if ((port->ci & (1 << slot)) == 0)
+            break;
+        if (port->is & (1 << 30)) {
+            return false;
+        }
+    }
+
+    if (port->tfd & 0x01) {
+        return false;
+    }
+
+    return true;
+}
+
 static uint32_t ahci_vfs_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_t* buffer) {
     ahci_drive_t* drive = (ahci_drive_t*)node->device;
     if (!drive) return 0;
@@ -278,9 +345,48 @@ static uint32_t ahci_vfs_read(vfs_node_t* node, uint32_t offset, uint32_t size, 
     return size;
 }
 
+static uint32_t ahci_vfs_write(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_t* buffer) {
+    ahci_drive_t* drive = (ahci_drive_t*)node->device;
+    if (!drive) return 0;
+
+    if (offset >= drive->sectors * drive->sector_size) return 0;
+    if (offset + size > drive->sectors * drive->sector_size) {
+        size = drive->sectors * drive->sector_size - offset;
+    }
+    if (size == 0) return 0;
+
+    uint64_t start_lba = offset / drive->sector_size;
+    uint32_t start_offset = offset % drive->sector_size;
+    uint64_t end_lba = (offset + size - 1) / drive->sector_size;
+    uint32_t count = end_lba - start_lba + 1;
+
+    uint32_t pages = (count * drive->sector_size + 4095) / 4096;
+    void* phys_buf = pmm_alloc(pages);
+    if (!phys_buf) return 0;
+
+    void* virt_buf = phys_to_virt((uint64_t)phys_buf);
+
+    if (start_offset != 0 || (size % drive->sector_size) != 0) {
+        if (!ahci_read_sectors(drive->port, start_lba, count, phys_buf)) {
+            pmm_free(phys_buf, pages);
+            return 0;
+        }
+    }
+
+    memcpy((uint8_t*)virt_buf + start_offset, buffer, size);
+
+    if (!ahci_write_sectors(drive->port, start_lba, count, phys_buf)) {
+        pmm_free(phys_buf, pages);
+        return 0;
+    }
+
+    pmm_free(phys_buf, pages);
+    return size;
+}
+
 static vfs_operations_t ahci_vfs_ops = {
     .read = ahci_vfs_read,
-    .write = NULL,
+    .write = ahci_vfs_write,
     .open = NULL,
     .close = NULL,
     .readdir = NULL,

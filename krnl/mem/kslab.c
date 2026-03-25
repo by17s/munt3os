@@ -82,17 +82,7 @@ void kmem_cache_dump_info(void) {
     tty_printf("=======================================================================================\n");
 }
 
-
-kmem_cache_t* kmem_cache_create(const char* name, size_t size) {
-    
-    if (size < sizeof(void*)) size = sizeof(void*);
-    
-    
-    size = (size + 7) & ~7;
-
-    kmem_cache_t* cache = (kmem_cache_t*)khmalloc(sizeof(kmem_cache_t));
-    if (!cache) return NULL;
-
+static int kmem_cache_init(kmem_cache_t* cache, const char* name, size_t size) {
     cache->name = name;
     cache->object_size = size;
     
@@ -110,7 +100,7 @@ kmem_cache_t* kmem_cache_create(const char* name, size_t size) {
     if (cache->objects_per_slab == 0) {
         LOG_ERROR("Object size %d is too large even with %d pages!", size, pages);
         khfree(cache);
-        return NULL;
+        return 0;
     }
 
     cache->slabs_partial = NULL;
@@ -119,6 +109,24 @@ kmem_cache_t* kmem_cache_create(const char* name, size_t size) {
 
     cache->next_cache = cache_chain;
     cache_chain = cache;
+
+    return 1;
+}
+
+kmem_cache_t* kmem_cache_create(const char* name, size_t size) {
+    
+    if (size < sizeof(void*)) size = sizeof(void*);
+    
+    
+    size = (size + 7) & ~7;
+
+    kmem_cache_t* cache = (kmem_cache_t*)khmalloc(sizeof(kmem_cache_t));
+    if (!cache) {
+        LOG_ERROR("Failed to allocate memory for cache structure %s (%llu)", name, (uint64_t)sizeof(kmem_cache_t));
+        return NULL;
+    }
+
+    kmem_cache_init(cache, name, size);
 
     LOG_INFO("Created cache %s: object_size=%llu objects_per_slab=%llu pages_per_slab=%llu",
              name, cache->object_size, cache->objects_per_slab, cache->pages_per_slab);

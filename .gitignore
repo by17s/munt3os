@@ -11,5 +11,6 @@
 *.obj
 *.iso
 *.tar
+*.img
 
 *.mos_cfg

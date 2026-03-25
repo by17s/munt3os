@@ -123,6 +123,7 @@ int kmain(tty_t *tty, int flags, void* initrd_base, size_t initrd_size) {
     vfs_mount("procfs", "/proc", "procfs", NULL);
     procfs_setup();
 
+    vfs_mount("/dev/sda", "/mnt", "ext2", NULL);
     
     dev_null_init();
     dev_zero_init();
@@ -137,26 +138,18 @@ int kmain(tty_t *tty, int flags, void* initrd_base, size_t initrd_size) {
     sched_init();
     syscall_init();
     
-    uint64_t cr3;
-    asm volatile("mov %%cr3, %0" : "=r"(cr3));
     
-    void* stack_usbpolling = (void*)kmalloc(4096);
-    void* stack_cmdline = (void*)kmalloc(8192); 
-    void* stack_vidswap = (void*)kmalloc(4096);
-
-    sched_add_thread("[USB Polling]", (void*)usb_polling_thread, stack_usbpolling, 4096, cr3);
+    sched_kthread("/sys/usbpoll", (void*)usb_polling_thread, CAP_KERNEL | CAP_SYS_ADMIN, UID_ROOT, GID_ROOT);
 
     if(vid_fb_enable_swap(tty->fb) == 0) {
         LOG_INFO("Framebuffer swap enabled successfully.");
-        sched_add_thread("[Video]", (void*)thread_vidswap, stack_vidswap, 4096, cr3);
+        sched_kthread("/sys/video", (void*)thread_vidswap, CAP_KERNEL, UID_ROOT, GID_ROOT);
     } else {
         LOG_ERROR("Failed to enable framebuffer swap.");
     }
 
-    vfs_mount("/dev/sda", "/mnt", "tarfs", NULL);
-    
     if(acpi_ps2_keyboard_present() || usb_dev_present(USB_DEV_TYPE_KEYBOARD)) {
-        sched_add_thread("UxSh (Fake)", cmdline_run, stack_cmdline, 8192, cr3);
+        sched_kthread("/sys/cmdline", cmdline_run, CAP_KTHREAD, UID_ROOT, GID_ROOT);
     } else {
         tty_printf("No PS/2 keyboard or USB keyboard detected. CMDLINE support will be disabled.\n");
     }

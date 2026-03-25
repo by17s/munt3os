@@ -150,7 +150,7 @@ void pcie_init(void) {
                             tmp.func = (uint8_t)func;
                             tmp.ecam_base = (uint64_t)pci_dev;
                             tmp.header = *pci_dev;
-                            
+                            ahci_init(&tmp);
                         }
                     }
 

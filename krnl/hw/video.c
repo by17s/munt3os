@@ -28,7 +28,7 @@ int vid_fb_enable_swap(framebuffer_t* fb) {
     if (!fb) return -1;
     if (fb->swap) return 0; 
 
-    if (!fb || !fb->buffer) return -1;
+    if (!fb->buffer) return -1;
     fb->swap = fb->buffer;
 
     size_t buffer_size = fb->height * fb->width * (fb->bpp / 8);

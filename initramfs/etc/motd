@@ -1,0 +1,16 @@
+MountainOS $version
+
+login: $username
+
+To install MountainOS, please follow the instructions in the installation guide provided on our website. 
+$color_cyan https://github.com/by17s/munt3os/INSTALL.md $color_reset
+
+If you have any questions or need support, please visit our community forums or contact our support team.
+$color_cyan https://github.com/by17s/munt3os/HELP.md $color_reset
+
+If you find any bugs or want to contribute to the project, please check out our contribution guidelines and submit a pull request.
+$color_cyan https://github.com/by17s/munt3os/CONTRIBUTING.md $color_reset
+
+Last login: $last_login_time
+
+Good luck!

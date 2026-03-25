@@ -4,13 +4,16 @@
 #include "mem/kheap.h"
 #include "font/psf.h"
 #include "mm.h"
+#include "task/sched.h"
 
 #include "util/moscfg.h"
 
 #include "log.h"
 LOG_MODULE("tty");
 
-static tty_t tty_array[4];
+#define TTY_MAX 8
+
+static tty_t tty_array[TTY_MAX];
 static tty_t* active_tty = NULL;
 static cfg_t* tty_cfg = NULL;
 static pallet_t default_ansi_pallet = {
@@ -27,13 +30,13 @@ int tty_get(int64_t index, tty_t** out) {
         *out = active_tty;
         return 0;
     }
-    if (index >= 4 || !out || index < 0) return -1;
+    if (index >= TTY_MAX || !out || index < 0) return -1;
     *out = &tty_array[index];
     return 0;
 }
 
 int tty_set_active(int64_t index) {
-    if (index >= 4 || index < 0) return -1;
+    if (index >= TTY_MAX || index < 0) return -1;
     active_tty = &tty_array[index];
     return 0;
 }
@@ -146,6 +149,9 @@ static int __tty_putchar_impl(tty_t* tty, char c) {
         tty->fb_x = 0;
         tty->fb_y += char_h;
         
+    } else if (c == '\t') {
+        for (size_t i = 0; i < 4; i++)
+            __tty_putchar_impl(tty, ' ');
     } else if(c == '\b') {
         if (tty->fb_x >= char_w) {
             tty->fb_x -= char_w;
@@ -209,18 +215,17 @@ static int __tty_vprintf_impl(tty_t* tty, const char* fmt, va_list args) {
 
 static int __tty_push_char_impl(tty_t* tty, char c) {
     if (!tty->putchar) return -1;
-    if (ring_buffer_write(&tty->input_buffer, (uint8_t*)&c, 1) == 0) {
-        return -1;
-    }
+    while (ring_buffer_write(&tty->input_buffer, (uint8_t*)&c, 1) == 0)
+        sched_yield();
     
     return 0;
 }
 
 static int __tty_getchar_impl(tty_t* tty) {
     uint8_t c;
-    if (ring_buffer_read(&tty->input_buffer, &c, 1) == 0) {
-        return -1;
-    }
+    while(ring_buffer_read(&tty->input_buffer, &c, 1) == 0)
+        sched_yield();
+
     return (int)c;
 }
 
@@ -296,6 +301,10 @@ int tty_printf(const char* __fmt, ...) {
 int tty_init(tty_t* tty, framebuffer_t *fb) {
     if (!tty) return -1;
 
+    for(int i = 0; i < TTY_MAX; i++) {
+        tty_array[i].cwd = NULL;
+    }
+
     tty->flags      = 0;
     
     
@@ -319,16 +328,13 @@ int tty_init(tty_t* tty, framebuffer_t *fb) {
 
     tty->cwd        = NULL;
     tty->pwd        = (char*)khmalloc(2);
+
     if (!tty->pwd) {
         LOG_ERROR("Failed to allocate memory for TTY pwd!");
         return -1;
     }
     strcpy(tty->pwd, "/");
     tty->cd         = __tty_cd_impl;
-
-    tty->fb         = fb;
-    tty->fb_x       = 0;
-    tty->fb_y       = 0;
 
     tty->freezed     = false;
     tty->ansi_state  = 0;
@@ -345,6 +351,11 @@ int tty_init(tty_t* tty, framebuffer_t *fb) {
     tty->fg_color   = tty->ansi_pallet.colors[tty->colors.fg_color_index];
     tty->bg_color   = tty->ansi_pallet.colors[tty->colors.bg_color_index];
 
+    tty->fb = (framebuffer_t*)kmalloc(sizeof(framebuffer_t));
+    *tty->fb        = *fb;
+    tty->fb_x       = 0;
+    tty->fb_y       = 0;;
+
     tty->fb->swap = tty->fb->buffer;
     
     if (!tty->fb->buffer) {
@@ -355,7 +366,29 @@ int tty_init(tty_t* tty, framebuffer_t *fb) {
     tty->clear(tty);
 
     return 0;
-}
+
+
+int tty_new(framebuffer_t* fb, tty_t** out) {
+    for (int i = 0; i < TTY_MAX; i++) {
+        if (tty_array[i].cwd == NULL) {
+            tty_array[i] = *active_tty;
+            if(tty_array[i].fb != NULL) {
+                tty_array[i].fb = kmalloc(sizeof(framebuffer_t));
+                *tty_array[i].fb = *active_tty->fb;
+                tty_array[i].fb->swap = NULL;
+
+                tty_array[i].fb_x = 0;
+                tty_array[i].fb_y = 0;
+
+                tty_array[i].clear(&tty_array[i]);
+                vid_fb_enable_swap(tty_array[i].fb);
+            }
+            return 0;
+        }
+    }
+    LOG_ERROR("No available TTY slots!");
+    return -1;
+}}
 
 int tty_load_pallet(tty_t* tty, const pallet_t* pallet) {
     if (!tty)

@@ -339,6 +339,32 @@ static int execute_cmd(tty_t *tty, int argc, char **argv) {
         return 0;
     }
 
+    if(strcmp(argv[0], "mkdir") == 0) {
+        if(argc < 2) {
+            tty->puts(tty, "mkdir: missing operand\n");
+            return 0;
+        }
+        vfs_node_t* target = tty->cwd;
+        if(vfs_mkdir(target, argv[1], 0x777) != 0) {
+            tty->printf(tty, "mkdir: failed to create directory '%s'\n", argv[1]);
+        }
+        return 0;
+    }
+
+    if(strcmp(argv[0], "create") == 0) {
+        if(argc < 2) {
+            tty->puts(tty, "create: missing operand\n");
+            return 0;
+        }
+        vfs_node_t* target = tty->cwd;
+        int new_file = vfs_create(target, argv[1], 0x666);
+        if(new_file) {
+            tty->printf(tty, "create: failed to create file '%s'\n", argv[1]);
+        }
+        return 0;
+
+    }
+
     if (strcmp(argv[0], "meminfo") == 0) {
         return 0;
     }
@@ -409,7 +435,7 @@ static int execute_cmd(tty_t *tty, int argc, char **argv) {
         uint64_t child_tid = sched_fork();
         if (child_tid == 0) {
             
-            int ret = sys_execve(argv[1]);
+            int ret = sys_execve(argv[1], (const char**)&argv[1]);
             tty->printf(tty, "Exec failed with code %d\n", ret);
             sched_exit(ret); 
         } else if (child_tid != (uint64_t)-1) {
@@ -423,15 +449,17 @@ static int execute_cmd(tty_t *tty, int argc, char **argv) {
     if (memcmp(argv[0], "./", 2) == 0) {
         uint64_t child_tid = sched_fork();
         if (child_tid == 0) {
-            
-            int ret = sys_execve(&argv[0][2]);
-            tty->printf(tty, "Exec failed with code %d\n", ret);
+            const char* exec_argv[argc + 1];
+            exec_argv[0] = &argv[0][2];
+            for (int i = 1; i < argc; i++) exec_argv[i] = argv[i];
+            exec_argv[argc] = NULL;
+            int ret = sys_execve(exec_argv[0], exec_argv);
+            tty->printf(tty, "File %s execution failed: permission denied (code %d)\n", exec_argv[0], ret);
             sched_exit(ret); 
         } else if (child_tid != (uint64_t)-1) {
-            
             int status = 0;
             sched_waitpid(child_tid, &status);
-            tty->printf(tty, "Process %llu exited with status %d\n", child_tid, status);
+            //tty->printf(tty, "Process %llu exited with status %d\n", child_tid, status);
         } else {
             tty->printf(tty, "Fork failed before exec!\n");
         }

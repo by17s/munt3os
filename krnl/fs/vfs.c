@@ -6,6 +6,8 @@
 #include "log.h"
 #include "cstdlib.h"
 
+#include "task/sched.h"
+
 LOG_MODULE("vfs")
 
 static kmem_cache_t* vfs_node_cache;
@@ -71,6 +73,10 @@ int vfs_mount(const char* source, const char* target, const char* fsname, void* 
                     curr->type = node->type;
                     curr->size = node->size;
                     curr->inode = node->inode;
+                    if (node->ops && node->ops->close) {
+                        node->device = NULL;
+                        vfs_free_node(node);
+                    }
                     LOG_INFO("VFS: Mounted '%s' at '%s'", fsname, target);
                 } else {
                     LOG_ERROR("VFS: Mount target '%s' not found", target);
@@ -260,6 +266,45 @@ vfs_node_t* vfs_finddir(vfs_node_t* node, char* name) {
     return NULL;
 }
 
+int vfs_create(vfs_node_t* node, char* name, uint16_t permission) {
+    if (node && node->ops && node->ops->create) {
+        return node->ops->create(node, name, permission);
+    }
+    return -1;
+}
+
+int vfs_mkdir(vfs_node_t* node, char* name, uint16_t permission) {
+    if (node && node->ops && node->ops->mkdir) {
+        return node->ops->mkdir(node, name, permission);
+    }
+    return -1;
+}
+
+int vfs_rmdir(vfs_node_t* node, char* name) {
+    if (node && node->ops && node->ops->rmdir) {
+        return node->ops->rmdir(node, name);
+    }
+    return -1;
+}
+
+int vfs_rename(vfs_node_t* node, char* old_name, char* new_name) {
+    if (node && node->ops && node->ops->rename) {
+        return node->ops->rename(node, old_name, new_name);
+    }
+    return -1;
+}
+
+static int has_permission(vfs_node_t* node, uint32_t uid, uint32_t gid, uint16_t perm) {
+    if (uid == 0) return 1; 
+    if (uid == node->uid) {
+        return (node->mask & (perm << 6)) != 0;
+    } else if (gid == node->gid) {
+        return (node->mask & (perm << 3)) != 0;
+    } else {
+        return (node->mask & perm) != 0;
+    }
+}
+
 vfs_node_t* kopen(const char* path) {
     if (!path) return NULL;
     
@@ -287,6 +332,54 @@ vfs_node_t* kopen(const char* path) {
     }
     
     khfree(resolved);
+    if(curr != NULL) {
+        thread_t* thread = sched_get_current_thread();
+        if (thread) {
+            if (!has_permission(curr, thread->cred.euid, thread->cred.egid, 4)) { 
+                kclose(curr);
+                return NULL;
+            }
+        }
+    }
+    return curr;
+}
+
+vfs_node_t* uopen(const char* path, int mode) {
+    vfs_node_t* curr = kopen(path);
+    if(curr != NULL) {
+        thread_t* thread = sched_get_current_thread();
+        if (thread) {
+            int16_t perm = 0;
+            perm |= 0b100;
+
+            if(mode & O_WRONLY) perm |= 0b010;
+            if(mode & O_RDWR)   perm |= 0b110;
+            if (!has_permission(curr, thread->cred.euid, thread->cred.egid, perm)) { 
+                kclose(curr);
+                return NULL;
+            }
+        } else {
+            return curr;
+        }
+    }
+    return curr;
+}
+
+vfs_node_t* uopendir(const char* path) {
+    vfs_node_t* curr = kopen(path);
+    if(curr != NULL) {
+        thread_t* thread = sched_get_current_thread();
+        if (thread) {
+            if (!has_permission(curr, thread->cred.euid, thread->cred.egid, 0b100) || curr->type != VFS_DIRECTORY) { 
+                kclose(curr);
+                return NULL;
+            } else{
+                return curr;
+            }
+        } else {
+            return curr;
+        }
+    }
     return curr;
 }
 
@@ -310,6 +403,40 @@ void kstat(vfs_node_t* node, struct stat* stat_buf) {
     }
 }
 
-void kclose(vfs_node_t* node) {
-    vfs_close(node);
+int kcreate(vfs_node_t* node, char* name, uint16_t permission) {
+    if (node && node->ops && node->ops->create) {
+        return node->ops->create(node, name, permission);
+    }
+    return -1;
 }
+
+int kmkdir(vfs_node_t* node, char* name, uint16_t permission) {
+    if (node && node->ops && node->ops->mkdir) {
+        return node->ops->mkdir(node, name, permission);
+    }
+    return -1;
+}
+
+int krmdir(vfs_node_t* node, char* name) {
+    if (node && node->ops && node->ops->rmdir) {
+        return node->ops->rmdir(node, name);
+    }
+    return -1;
+}
+
+int kremove(vfs_node_t* node, char* name) {
+    if (node && node->ops && node->ops->unlink) {
+        return node->ops->unlink(node, name);
+    }
+    return -1;
+}
+
+void kclose(vfs_node_t* node) {
+    if (!node) return;
+    vfs_close(node);
+    if (node->ops && node->ops->close && !node->device) {
+        vfs_free_node(node);
+    }
+}
+
+
